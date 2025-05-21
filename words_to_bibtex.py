@@ -54,6 +54,15 @@ def get_argparser():
 
 def read_input_file(path):
     """Read input lines from a txt or bib file."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input file {path} does not exist.")
+    if not path.is_file():
+        raise ValueError(f"Input path {path} is not a file.")
+    if not path.suffix in [".txt", ".bib"]:
+        raise ValueError(
+            f"Input file {path} must be a .txt or .bib file, but got {path.suffix}"
+        )
     with open(path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
     return lines
@@ -81,16 +90,17 @@ def main(args):
     if config.proxy.enable:
         set_proxy(config.proxy.host, str(config.proxy.port))
 
+    # 读取输入内容
+    input_file = Path(args.input_file)
+    queries = read_input_file(args.input_file)
+
     # 创建输出目录
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_bib_path = output_dir / "output-{}.bib".format(
-        datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    output_bib_path = output_dir / "{}-{}.bib".format(
+        input_file.stem, datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     )
-
-    # 读取输入内容
-    queries = read_input_file(args.input_file)
 
     # 处理每个查询
     pbar = tqdm.tqdm(total=len(queries), desc="Processing queries")
