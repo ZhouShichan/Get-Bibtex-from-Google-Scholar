@@ -11,6 +11,7 @@ from getbibtexlib import (
     Config,
     DEFAULT_CONFIG,
     get_bibtex,
+    format_bibtex,
     set_proxy,
     setup_logger,
 )
@@ -111,6 +112,10 @@ def main(args):
         try:
             bibtex = get_bibtex(config, query, source=args.source)
             if bibtex:
+                try:
+                    bibtex = "{}\n\n".format(format_bibtex(bibtex))
+                except Exception as e:
+                    logger.error(f"Failed to format bibtex for query '{query}': {str(e)}")
                 with output_bib_path.open("a") as f:
                     f.write("% Query: {}\n".format(query.replace("\n", r"\n")))
                     f.write("% Source: {}\n".format(args.source))

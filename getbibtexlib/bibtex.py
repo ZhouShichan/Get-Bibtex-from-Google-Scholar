@@ -1,8 +1,65 @@
-from lxml import etree
-import requests
 from loguru import logger
+from lxml import etree
+import bibtexparser as bp
+import requests
 
 from .config import Config, BibtexRoute
+
+
+def convert_to_latex_compatible(s):
+    """
+    将字符串中的特殊字符转换为LaTeX兼容的形式。
+
+    Args:
+        s (str): 需要转换的字符串。
+
+    Returns:
+        str: 转换后的LaTeX兼容字符串。
+    """
+    latex_special_chars = {
+        "&": "\\&",
+        "%": "\\%",
+        "$": "\\$",
+        "#": "\\#",
+        "_": "\\_",
+        "{": "\\{",
+        "}": "\\}",
+        "~": "\\textasciitilde{}",
+        "^": "\\textasciicircum{}",
+    }
+    for char, latex in latex_special_chars.items():
+        s = s.replace(char, latex)
+    return s
+
+
+def format_bibtex(bibtex_str):
+    # Parse the BibTeX string
+    bib_database = bp.loads(bibtex_str)
+    res = []
+    for entry in bib_database.entries:
+        # 对每个字段应用转换并去除多余空白字符
+        max_length = 0
+        entry_value_dict = {}
+        for key in sorted(entry.keys()):
+            if key in ["ENTRYTYPE", "ID"]:
+                continue
+            original_value = entry[key]
+            # 去除多余的换行符和制表符
+            cleaned_value = original_value.replace("\n", " ").replace("\t", " ").strip()
+            # 转换成LaTeX兼容格式
+            entry_value_dict[key] = convert_to_latex_compatible(cleaned_value)
+            max_length = max(max_length, len(key))
+        # 右对齐 key
+        tmp = [
+            f"@{entry['ENTRYTYPE']}{{{entry['ID']},",
+            *[
+                f"  {key.ljust(max_length)}    = {{{value}}},"
+                for key, value in entry_value_dict.items()
+            ],
+            f"}}",
+        ]
+        res.append("\n".join(tmp))
+    return "\n\n".join(res)
 
 
 def get_bibtex_common(config: Config, query: str, source="google_scholar"):
