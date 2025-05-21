@@ -1,101 +1,122 @@
-# -------------- Basic Settings --------------
-from global_settings import *
+from pathlib import Path
+import argparse
+from typing import Dict
+from datetime import datetime
 
-import os
+from omegaconf import OmegaConf
+from loguru import logger
+import tqdm
 
-# Set working directory
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+from getbibtexlib import (
+    Config,
+    DEFAULT_CONFIG,
+    get_bibtex,
+    set_proxy,
+    setup_logger,
+)
 
-# Set proxy if enabled
-def set_proxy(proxy_url, proxy_port):
-    os.environ['http_proxy'] = f'{proxy_url}:{proxy_port}'
-    os.environ['https_proxy'] = f'{proxy_url}:{proxy_port}'
 
-if proxy_related['enable']:
-    set_proxy(proxy_related['proxy_url'], proxy_related['proxy_port'])
+def get_argparser():
+    parser = argparse.ArgumentParser(
+        description="Fetch bibtex entries based on input queries."
+    )
+    parser.add_argument(
+        "--input_file",
+        "-i",
+        type=str,
+        default="words.txt",
+        help="Input file path (.txt or .bib)",
+    )
+    parser.add_argument(
+        "--output_dir",
+        "-o",
+        type=str,
+        default="outputs",
+        help="Output directory to save fetched bibtex files",
+    )
+    parser.add_argument(
+        "--source",
+        "-s",
+        type=str,
+        default="google_scholar",
+        help="Search source (e.g., google_scholar, dblp)",
+    )
+    parser.add_argument(
+        "--config",
+        "-c",
+        type=str,
+        default="config.yaml",
+        help="Path to global config YAML file (default: config.yaml)",
+    )
+    parser.add_argument("--cookie", type=str, default=None, help="Cookie for source")
+    return parser
 
-# ------------------- Main -------------------
 
-import requests
-from lxml import etree
+def read_input_file(path):
+    """Read input lines from a txt or bib file."""
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+    return lines
 
-params={
-  "hl": "zh-CN",
-  "as_sdt": "0,5",
-  "q": "Challenges in firmware re-hosting, emulation, and analysis",
-  "btnG": ""
-}
-params2={
-  "q": "info:pjS_Ia9di18J:scholar.google.com/",
-  "output": "cite",
-  "scirp": "0",
-  "hl": "zh-CN",
-}
 
-# Get data function
-def get_data(q, source="google_scholar"):
-    if source not in searchUrlBases:
-        print(f"Source {source} is not supported.")
-        return None
-    
-    # 暂时只支持单页面跳转的检索模式, 也就是只有一个bibtex_route
-    source_settings = searchUrlBases[source]["bibtex_route"][0]
-    url = source_settings["url"]
-    search_url = url.replace("@@", q)
-    need_cookie = source_settings["need_cookie"]
-    headers['Referer'] = search_url.split('?')[0]
-    
-    if need_cookie and headers['Cookie'] == "":
-        print("No Cookie for %s! Please visit this page %s to get your cookie. Now will remove this source from searchWay." % (source, url.replace("@@", "1")))
-        to_delete.append(source)
-        return None
+@logger.catch
+def main(args):
+    setup_logger("INFO")
 
-    # get the first article id
-    res = requests.get(search_url, headers=headers)
-    content = res.text
-    html = etree.HTML(content)
-    dom_xpath = source_settings["dom"]
-    elements =  html.xpath(dom_xpath)
-    if elements == []:
-      print(f"{q} not found in {source}.")
-      return None
-    # 获得第一个文章的bibtex链接
-    bibtex_link = elements[0].attrib['href']
-    # 将".html?view=bibtex"替换为".bib"
-    if "keyword_regex" in source_settings:
-        for old, new in source_settings["keyword_regex"].items():
-            bibtex_link = bibtex_link.replace(old, new)
-    # get bibtex result
-    res = requests.get(bibtex_link, headers=headers)
-    return res.text
+    # 加载主配置文件
+    dict_conf = OmegaConf.structured(DEFAULT_CONFIG)
+    if Path(args.config).exists():
+        dict_conf = OmegaConf.merge(
+            dict_conf, OmegaConf.load(args.config)
+        )  # type: ignore
+    dict_conf: Dict = OmegaConf.to_container(dict_conf, resolve=True)  # type: ignore
+    config = Config.from_dict(dict_conf)
+    if "cookie" in args and args.cookie:
+        cookie_dict = {args.source: args.cookie}
+        if not config.cookies:
+            config.cookies = cookie_dict
+        else:
+            config.cookies.update(cookie_dict)
 
-to_delete = []
-# remove done
-with open('./done.txt', 'r', encoding='utf-8') as fd:
-  with open('./words.txt', 'r', encoding='utf-8') as f:
-    done_list = fd.readlines()
-    q_list = f.readlines()
-    after = list(set(q_list)-set(done_list))
-    after.sort(key = q_list.index)
-    q_list = after
+    if config.proxy.enable:
+        set_proxy(config.proxy.host, str(config.proxy.port))
 
-with open('./words.txt', 'w', encoding='utf-8') as f:
-  f.writelines(q_list)
-  
-# find
-for q in q_list:
-  if q == '\n':
-    continue
-  with open('./done.txt', 'a', encoding='utf-8') as fd:
-    with open('./result_bibtex.txt', 'a', encoding='utf-8') as fw:
-      with open('./result_cite.txt', 'a', encoding='utf-8') as fc:
-          for search_way in searchWay:
-            result = get_data(q, search_way)
-            if result != None:
-              fw.write(result+'\n')
-              fc.write(q.split(']')[0].strip()+'\t\cite{'+result.split('\n')[0].split('{')[1][:-1]+'}\n')
-              fd.write(q)
-          if to_delete != []:
-              for source in to_delete:
-                  searchWay.remove(source)
-              to_delete = []
+    # 创建输出目录
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_bib_path = output_dir / "output-{}.bib".format(
+        datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    )
+
+    # 读取输入内容
+    queries = read_input_file(args.input_file)
+
+    # 处理每个查询
+    pbar = tqdm.tqdm(total=len(queries), desc="Processing queries")
+    for idx, query in enumerate(queries):
+        query = query.strip()
+        if not query:
+            continue
+        try:
+            bibtex = get_bibtex(config, query, source=args.source)
+            if bibtex:
+                with output_bib_path.open("a") as f:
+                    f.write("% Query: {}\n".format(query.replace("\n", r"\n")))
+                    f.write("% Source: {}\n".format(args.source))
+                    f.write(bibtex)
+            else:
+                logger.warning(f"No bibtex returned for query: {query}")
+        except Exception as e:
+            logger.error(f"Failed processing query '{query}': {str(e)}")
+        finally:
+            pbar.update(1)
+    pbar.close()
+    logger.info("All done.")
+    logger.info(f"Bibtex entries saved to {output_bib_path}")
+
+
+if __name__ == "__main__":
+    parser = get_argparser()
+    args = parser.parse_args()
+    main(args)

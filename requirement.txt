@@ -1,0 +1,6 @@
+loguru
+requests
+lxml
+omegaconf
+bibtexparser
+tqdm
