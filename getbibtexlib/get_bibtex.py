@@ -59,7 +59,7 @@ def get_bibtex_common(config: Config, query: str, source="google_scholar"):
 
 
 def get_bibtex(config: Config, query: str, source="google_scholar"):
-    if source in ["google_scholar", "baidu_scholar"]:
+    if source in ["google_scholar", "dblp"]:
         return get_bibtex_common(config, query, source)
     else:
         raise NotImplementedError("{} is not supported yet.".format(source))
