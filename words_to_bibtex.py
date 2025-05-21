@@ -45,7 +45,7 @@ def get_argparser():
         "--config",
         "-c",
         type=str,
-        default="config.yaml",
+        default="config/custom.yaml",
         help="Path to global config YAML file (default: config.yaml)",
     )
     parser.add_argument("--cookie", type=str, default=None, help="Cookie for source")
