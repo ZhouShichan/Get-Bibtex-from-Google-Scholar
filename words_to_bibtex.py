@@ -49,6 +49,11 @@ def get_argparser():
         default="config/custom.yaml",
         help="Path to global config YAML file (default: config.yaml)",
     )
+    parser.add_argument(
+        "--no_query_output",
+        action="store_true",
+        help="Do not output query to bibtex file",
+    )
     parser.add_argument("--cookie", type=str, default=None, help="Cookie for source")
     return parser
 
@@ -117,7 +122,8 @@ def main(args):
                 except Exception as e:
                     logger.error(f"Failed to format bibtex for query '{query}': {str(e)}")
                 with output_bib_path.open("a") as f:
-                    f.write("% Query: {}\n".format(query.replace("\n", r"\n")))
+                    if not args.no_query_output:
+                        f.write("% Query: {}\n".format(query.replace("\n", r"\n")))
                     f.write("% Source: {}\n".format(args.source))
                     f.write(bibtex)
             else:
