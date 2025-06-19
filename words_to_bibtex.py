@@ -18,9 +18,7 @@ from getbibtexlib import (
 
 
 def get_argparser():
-    parser = argparse.ArgumentParser(
-        description="Fetch bibtex entries based on input queries."
-    )
+    parser = argparse.ArgumentParser(description="Fetch bibtex entries based on input queries.")
     parser.add_argument(
         "--input_file",
         "-i",
@@ -46,8 +44,8 @@ def get_argparser():
         "--config",
         "-c",
         type=str,
-        default="config/custom.yaml",
-        help="Path to global config YAML file (default: config.yaml)",
+        default="custom",
+        help="Path to global config YAML file (default: custom)",
     )
     parser.add_argument(
         "--no_query_output",
@@ -66,9 +64,7 @@ def read_input_file(path):
     if not path.is_file():
         raise ValueError(f"Input path {path} is not a file.")
     if not path.suffix in [".txt", ".bib"]:
-        raise ValueError(
-            f"Input file {path} must be a .txt or .bib file, but got {path.suffix}"
-        )
+        raise ValueError(f"Input file {path} must be a .txt or .bib file, but got {path.suffix}")
     with open(path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
     return lines
@@ -78,11 +74,11 @@ def read_input_file(path):
 def main(args):
     setup_logger("INFO")
 
-    # 加载主配置文件
+    # 加载配置文件
     dict_conf = OmegaConf.structured(DEFAULT_CONFIG)
     if Path(args.config).exists():
         dict_conf = OmegaConf.merge(
-            dict_conf, OmegaConf.load(args.config)
+            dict_conf, OmegaConf.load(Path(__file__).parent / f"configs/{args.config}.yaml")
         )  # type: ignore
     dict_conf: Dict = OmegaConf.to_container(dict_conf, resolve=True)  # type: ignore
     config = Config.from_dict(dict_conf)
@@ -104,9 +100,7 @@ def main(args):
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_bib_path = output_dir / "{}-{}.bib".format(
-        input_file.stem, datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    )
+    output_bib_path = output_dir / "{}-{}.bib".format(input_file.stem, datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
     # 处理每个查询
     pbar = tqdm.tqdm(total=len(queries), desc="Processing queries")
